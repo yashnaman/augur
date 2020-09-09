@@ -18,7 +18,7 @@ contract AMMExchange is ERC20 {
     uint256 public NO;
     uint256 public YES;
     uint256 public fee; // [0-1000] how many thousandths of swaps should be kept as fees
-    uint256 liquidityConstant; // defaults to zero
+    uint256 private liquidityConstant; // defaults to zero
 
     constructor(IMarket _market, IParaShareToken _shareToken, uint256 _fee) public {
         cash = _shareToken.cash();
@@ -35,24 +35,22 @@ contract AMMExchange is ERC20 {
 
     // Adds shares to the liquidity pool by minting complete sets.
     function addLiquidity(uint256 _sharesToBuy) external {
-        uint256 _poolConstantBefore = liquidityConstant;
-
         cash.transferFrom(msg.sender, address(this), _sharesToBuy.mul(numTicks));
         shareToken.publicBuyCompleteSets(augurMarket, _sharesToBuy);
 
-        uint256 _poolConstantAfter = calculateLiquidityConstant();
+        uint256 _newLiquidityConstant = calculateLiquidityConstant();
 
-        if (_poolConstantBefore == 0) {
-            // The formula for issuing LP tokens breaks down when the supply (and therefore poolConstant) are zero.
-            _mint(msg.sender, _poolConstantAfter);
+        if (liquidityConstant == 0) {
+            // The formula for issuing LP tokens breaks down when the supply (and therefore liquidityConstant) are zero.
+            _mint(msg.sender, _newLiquidityConstant);
         } else {
             uint256 _totalSupply = totalSupply;
             // User gains LP tokens relative to how many LP tokens were already issued, and the change in the ratio of shares in the pool.
             // User gains more LP tokens if they are an earlier
-            _mint(msg.sender, _totalSupply.mul(_poolConstantAfter).div(_poolConstantBefore).sub(_totalSupply));
+            _mint(msg.sender, _totalSupply.mul(_newLiquidityConstant).div(liquidityConstant).sub(_totalSupply));
         }
 
-        liquidityConstant = _poolConstantAfter;
+        liquidityConstant = _newLiquidityConstant;
     }
 
     // Removes shares from the liquidity pool; does not redeem complete sets for cash.
@@ -67,6 +65,7 @@ contract AMMExchange is ERC20 {
         _burn(msg.sender, _poolTokensToSell);
         shareTransfer(address(this), msg.sender, _invalidShare, _noShare, _yesShare);
         cash.transfer(msg.sender, _cashShare);
+        liquidityConstant = calculateLiquidityConstant();
         // CONSIDER: convert min(poolInvalid, poolYes, poolNo) to DAI by selling complete sets. Selling complete sets incurs Augur fees, maybe we should let the user sell the sets themselves if they want to pay the fee?
     }
 

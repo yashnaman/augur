@@ -31,20 +31,27 @@ contract AMMExchange is ERC20 {
         YES = _shareToken.getTokenId(_market, 2);
     }
 
+    // Adds shares to the liquidity pool by minting complete sets.
     function addLiquidity(uint256 _sharesToBuy) external {
         uint256 _poolConstantBefore = liquidityConstant();
 
         cash.transferFrom(msg.sender, address(this), _sharesToBuy.mul(numTicks));
         shareToken.publicBuyCompleteSets(augurMarket, _sharesToBuy);
 
+        uint256 _poolConstantAfter = liquidityConstant();
+
         if (_poolConstantBefore == 0) {
-            _mint(msg.sender, liquidityConstant());
+            // The formula for issuing LP tokens breaks down when the supply (and therefore poolConstant) are zero.
+            _mint(msg.sender, _poolConstantAfter);
         } else {
             uint256 _totalSupply = totalSupply;
-            _mint(msg.sender, _totalSupply.mul(liquidityConstant())).div(_poolConstantBefore).sub(_totalSupply));
+            // User gains LP tokens relative to how many LP tokens were already issued, and the change in the ratio of shares in the pool.
+            // User gains more LP tokens if they are an earlier
+            _mint(msg.sender, _totalSupply.mul(_poolConstantAfter).div(_poolConstantBefore).sub(_totalSupply));
         }
     }
 
+    // Removes shares from the liquidity pool; does not redeem complete sets for cash.
     function removeLiquidity(uint256 _poolTokensToSell) external {
         uint256 _poolSupply = totalSupply;
         (uint256 _poolInvalid, uint256 _poolNo, uint256 _poolYes) = shareBalances(address(this));
@@ -59,13 +66,14 @@ contract AMMExchange is ERC20 {
         // CONSIDER: convert min(poolInvalid, poolYes, poolNo) to DAI by selling complete sets. Selling complete sets incurs Augur fees, maybe we should let the user sell the sets themselves if they want to pay the fee?
     }
 
-    function enterPositionCash(uint256 _amountInCash, bool _buyYes) external returns (uint256) {
+    // Spend cash for shares.
+    // You will receive as many shares as you can afford for the given cash.
+    // If that isn't as many shares as _minSharesReceived then this reverts.
+    function enterPosition(uint256 _amountInCash, bool _buyYes, uint256 _minSharesReceived) public returns (uint256) {
         uint256 _setsToBuy = _amountInCash.div(numTicks);
-        return enterPositionShares(_setsToBuy, _buyYes);
-    }
-
-    function enterPositionShares(uint256 _setsToBuy, bool _buyYes) public returns (uint256) {
         uint256 _position = rateEnterPosition(_setsToBuy, _buyYes);
+
+        assert(_position >= _minSharesReceived, "Not enough cash to buy at least the minimum requested shares.");
 
         // materialize the final result of the simulation
         cash.transferFrom(msg.sender, address(this), _setsToBuy.mul(numTicks));
@@ -78,6 +86,7 @@ contract AMMExchange is ERC20 {
         return _position;
     }
 
+    // How many shares you get if you buy complete sets then sell the other side.
     function rateEnterPosition(uint256 _setsToBuy, bool _buyYes) public view returns (uint256) {
         (uint256 _poolInvalid, uint256 _poolNo, uint256 _poolYes) = shareBalances(address(this));
 
@@ -100,14 +109,10 @@ contract AMMExchange is ERC20 {
         }
     }
 
-    function exitPositionCash(uint256 _cashToBuy) external {
-        uint256 _setsToSell = _cashToBuy.div(numTicks);
-        exitPositionShares(_setsToSell);
-    }
-
     // If you do not have complete sets then you must have more shares than _setsToSell because you will be swapping
     // some of them to build complete sets.
-    function exitPositionShares(uint256 _setsToSell) public {
+    function exitPosition(uint256 _cashToBuy) external {
+        uint256 _setsToSell = _cashToBuy.div(numTicks);
         (uint256 _noFromUser, uint256 _yesFromUser) = rateExitPosition(_setsToSell);
 
         // materialize the complete set sale for cash
@@ -127,6 +132,7 @@ contract AMMExchange is ERC20 {
             return (_setsToSell, _setsToSell);
         }
 
+        // TODO how can user fix this situation? can this happen if user only ever uses AMM?
         require(_userInvalid >= _setsToSell, "AugurCP: You don't have enough invalid tokens to close out for this amount.");
         require(_userNo > _setsToSell || _userYes > _setsToSell, "AugurCP: You don't have enough YES or NO tokens to close out for this amount.");
 
@@ -166,13 +172,14 @@ contract AMMExchange is ERC20 {
         return _outputShares;
     }
 
+    // How many of the other shares you would get for your shares.
     function rateSwap(uint256 _inputShares, bool _inputYes) public returns (uint256) {
         (uint256 _poolNo, uint256 _poolYes) = yesNoShareBalances(address(this));
         uint256 _poolConstant = poolConstant(_poolYes, _poolNo);
         if (_inputYes) {
-            return _poolNo.sub(_poolConstant.div(_poolYes.add(_yesFromUser)));
+            return _poolNo.sub(_poolConstant.div(_poolYes.add(_inputShares)));
         } else {
-            return _poolYes.sub(_poolConstant.div(_poolNo.add(_noFromUser)));
+            return _poolYes.sub(_poolConstant.div(_poolNo.add(_inputShares)));
         }
     }
 
@@ -181,6 +188,7 @@ contract AMMExchange is ERC20 {
     }
 
     // When swapping (which includes entering and exiting positions), a fee is taken.
+    // The fee is a portion of the shares being swapped.
     // Remove liquidity to collect fees.
     function poolConstant(uint256 _poolYes, uint256 _poolNo) public view returns (uint256) {
         uint256 beforeFee = _poolYes.mul(_poolNo);
@@ -244,7 +252,9 @@ contract AMMExchange is ERC20 {
         }
         shareToken.unsafeBatchTransferFrom(_from, _to, _tokenIds, _amounts);
     }
-    
+
+    // TODO need to handle much larger numbers.
+    // Accepts value in range [0, 0x100000000].
     // Returns value in range [0, 0x10000].
     function sqrt(uint32 x) private pure returns (uint32 s) {
         s = 0;

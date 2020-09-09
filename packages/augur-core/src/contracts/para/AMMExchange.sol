@@ -120,19 +120,18 @@ contract AMMExchange is ERC20 {
         cash.transfer(msg.sender, _cashToBuy);
     }
 
-    // How many extra shares you need
+    // How many extra shares you need.
+    // Returns (no,yes) or (long,short)
     function rateExitPosition(uint256 _setsToSell) public view returns (uint256,uint256) {
         (uint256 _userInvalid, uint256 _userNo, uint256 _userYes) = shareBalances(msg.sender);
         (uint256 _poolNo, uint256 _poolYes) = yesNoShareBalances(address(this));
 
         // short circuit if user is closing out their own complete sets
         if (_userInvalid >= _setsToSell && _userNo >= _setsToSell && _userYes >= _setsToSell) {
-            shareTransfer(msg.sender, address(this), _setsToSell, _setsToSell, _setsToSell);
-            cash.transfer(msg.sender, _cashToBuy);
             return (_setsToSell, _setsToSell);
         }
 
-        // TODO how can user fix this situation? can this happen if user only ever uses AMM?
+        // User can only have insufficient invalid shares if they sell them outside of the AMM.
         require(_userInvalid >= _setsToSell, "AugurCP: You don't have enough invalid tokens to close out for this amount.");
         require(_userNo > _setsToSell || _userYes > _setsToSell, "AugurCP: You don't have enough YES or NO tokens to close out for this amount.");
 

@@ -20,7 +20,9 @@ contract AMMExchange is ERC20 {
     uint256 public fee; // [0-1000] how many thousandths of swaps should be kept as fees
     uint256 private liquidityConstant; // defaults to zero
 
-    constructor(IMarket _market, IParaShareToken _shareToken, uint256 _fee) public {
+    function initialize(IMarket _market, IParaShareToken _shareToken, uint256 _fee) public {
+        require(cash == ICash(0)); // can only initialize once
+
         cash = _shareToken.cash();
         shareToken = _shareToken;
         augurMarket = _market;

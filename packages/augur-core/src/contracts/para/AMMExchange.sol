@@ -17,9 +17,10 @@ contract AMMExchange is ERC20 {
     uint256 public INVALID;
     uint256 public NO;
     uint256 public YES;
-    uint256 public fee;
+    uint256 public fee; // [0-1000] how many thousandths of swaps should be kept as fees
+    uint256 liquidityConstant; // defaults to zero
 
-    constructor(IMarket _market, IParaShareToken _shareToken) public {
+    constructor(IMarket _market, IParaShareToken _shareToken, uint256 _fee) public {
         cash = _shareToken.cash();
         shareToken = _shareToken;
         augurMarket = _market;
@@ -29,16 +30,17 @@ contract AMMExchange is ERC20 {
         INVALID = _shareToken.getTokenId(_market, 0);
         NO = _shareToken.getTokenId(_market, 1);
         YES = _shareToken.getTokenId(_market, 2);
+        fee = _fee;
     }
 
     // Adds shares to the liquidity pool by minting complete sets.
     function addLiquidity(uint256 _sharesToBuy) external {
-        uint256 _poolConstantBefore = liquidityConstant();
+        uint256 _poolConstantBefore = liquidityConstant;
 
         cash.transferFrom(msg.sender, address(this), _sharesToBuy.mul(numTicks));
         shareToken.publicBuyCompleteSets(augurMarket, _sharesToBuy);
 
-        uint256 _poolConstantAfter = liquidityConstant();
+        uint256 _poolConstantAfter = calculateLiquidityConstant();
 
         if (_poolConstantBefore == 0) {
             // The formula for issuing LP tokens breaks down when the supply (and therefore poolConstant) are zero.
@@ -49,6 +51,8 @@ contract AMMExchange is ERC20 {
             // User gains more LP tokens if they are an earlier
             _mint(msg.sender, _totalSupply.mul(_poolConstantAfter).div(_poolConstantBefore).sub(_totalSupply));
         }
+
+        liquidityConstant = _poolConstantAfter;
     }
 
     // Removes shares from the liquidity pool; does not redeem complete sets for cash.
@@ -182,7 +186,7 @@ contract AMMExchange is ERC20 {
         }
     }
 
-    function liquidityConstant() public view returns (uint256) {
+    function calculateLiquidityConstant() public view returns (uint256) {
         return sqrt(shareToken.balanceOf(address(this), YES) * shareToken.balanceOf(address(this), NO));
     }
 
@@ -250,19 +254,6 @@ contract AMMExchange is ERC20 {
             _amounts[2] = _yesAmount;
         }
         shareToken.unsafeBatchTransferFrom(_from, _to, _tokenIds, _amounts);
-    }
-
-    // TODO need to handle much larger numbers.
-    // Accepts value in range [0, 0x100000000].
-    // Returns value in range [0, 0x10000].
-    function sqrt(uint32 x) private pure returns (uint32 s) {
-        s = 0;
-        uint32 b = uint32(1) << 15;
-        while (b) {
-            uint32 t = s + b;
-            if (t * t <= x) s = t;
-            b >>= 1;
-        }
     }
 
     function onTokenTransfer(address _from, address _to, uint256 _value) internal {}

@@ -114,8 +114,7 @@ contract AMMExchange is ERC20 {
 
     // If you do not have complete sets then you must have more shares than _setsToSell because you will be swapping
     // some of them to build complete sets.
-    function exitPosition(uint256 _cashToBuy) external {
-        uint256 _setsToSell = _cashToBuy.div(numTicks);
+    function exitPosition(uint256 _setsToSell) external {
         (uint256 _noFromUser, uint256 _yesFromUser) = rateExitPosition(_setsToSell);
 
         // materialize the complete set sale for cash

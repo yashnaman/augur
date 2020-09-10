@@ -116,7 +116,9 @@ export const EXTERNAL_CONTRACTS = [
     'RelayHub',
     'RelayHubV2',
     'Penalizer',
-    'StakeManager'
+    'StakeManager',
+    // AMM
+    'AMMExchange',
 ];
 
 export const REGISTERED_EXTERNAL_CONTRACTS = [

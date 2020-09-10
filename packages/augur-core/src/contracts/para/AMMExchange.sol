@@ -78,7 +78,7 @@ contract AMMExchange is ERC20 {
         uint256 _setsToBuy = _amountInCash.div(numTicks);
         uint256 _position = rateEnterPosition(_setsToBuy, _buyYes);
 
-        assert(_position >= _minSharesReceived, "Not enough cash to buy at least the minimum requested shares.");
+        require(_position >= _minSharesReceived, "Not enough cash to buy at least the minimum requested shares.");
 
         // materialize the final result of the simulation
         cash.transferFrom(msg.sender, address(this), _setsToBuy.mul(numTicks));
@@ -116,13 +116,19 @@ contract AMMExchange is ERC20 {
 
     // If you do not have complete sets then you must have more shares than _setsToSell because you will be swapping
     // some of them to build complete sets.
-    function exitPosition(uint256 _setsToSell) external {
+    function exitPosition(uint256 _cashToBuy) public {
+        uint256 _setsToSell = _cashToBuy.div(numTicks);
         (uint256 _noFromUser, uint256 _yesFromUser) = rateExitPosition(_setsToSell);
 
         // materialize the complete set sale for cash
         shareTransfer(msg.sender, address(this), _setsToSell, _noFromUser, _yesFromUser);
         cash.transfer(msg.sender, _cashToBuy);
     }
+
+//    function exitAll(uint256 _minCashPayout) external {
+//        (uint256 _userNo, uint256 _userYes) = yesNoShareBalances(msg.sender);
+//        exitPosition(_userNo, _userYes, _minCashPayout);
+//    }
 
     // How many extra shares you need.
     // Returns (no,yes) or (long,short)
@@ -176,7 +182,7 @@ contract AMMExchange is ERC20 {
     }
 
     // How many of the other shares you would get for your shares.
-    function rateSwap(uint256 _inputShares, bool _inputYes) public returns (uint256) {
+    function rateSwap(uint256 _inputShares, bool _inputYes) public view returns (uint256) {
         (uint256 _poolNo, uint256 _poolYes) = yesNoShareBalances(address(this));
         uint256 _poolConstant = poolConstant(_poolYes, _poolNo);
         if (_inputYes) {
@@ -187,7 +193,7 @@ contract AMMExchange is ERC20 {
     }
 
     function calculateLiquidityConstant() public view returns (uint256) {
-        return sqrt(shareToken.balanceOf(address(this), YES) * shareToken.balanceOf(address(this), NO));
+        return SafeMathUint256.sqrt(shareToken.balanceOf(address(this), YES) * shareToken.balanceOf(address(this), NO));
     }
 
     // When swapping (which includes entering and exiting positions), a fee is taken.

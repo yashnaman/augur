@@ -76,7 +76,7 @@ contract AMMExchange is ERC20 {
         uint256 _setsToBuy = _amountInCash.div(numTicks);
         uint256 _position = rateEnterPosition(_setsToBuy, _buyYes);
 
-        require(_position >= _minSharesReceived, "Not enough cash to buy at least the minimum requested shares.");
+        require(_position >= _minSharesReceived, "AugurCP: Not enough cash to buy at least the minimum requested shares.");
 
         // materialize the final result of the simulation
         cash.transferFrom(msg.sender, address(this), _setsToBuy.mul(numTicks));
@@ -165,8 +165,10 @@ contract AMMExchange is ERC20 {
         return (_noFromUser, _yesFromUser);
     }
 
-    function swap(uint256 _inputShares, bool _inputYes) external returns (uint256) {
+    function swap(uint256 _inputShares, bool _inputYes, uint256 _minOutputShares) external returns (uint256) {
         uint _outputShares = rateSwap(_inputShares, _inputYes);
+
+        require(_outputShares >= _minOutputShares, "AugurCP: Swap would yield too few output shares.");
 
         if (_inputYes) { // lose yesses, gain nos
             shareToken.unsafeTransferFrom(msg.sender, address(this), YES, _inputShares);

@@ -114,9 +114,12 @@ contract AMMExchange is ERC20 {
 
     // If you do not have complete sets then you must have more shares than _setsToSell because you will be swapping
     // some of them to build complete sets.
-    function exitPosition(uint256 _cashToBuy) public {
-        uint256 _setsToSell = _cashToBuy.div(numTicks);
+    function exitPosition(uint256 _setsToSell, uint256 _maxSharesSwappedAway) public {
+        uint256 _cashToBuy = _setsToSell.mul(numTicks);
         (uint256 _noFromUser, uint256 _yesFromUser) = rateExitPosition(_setsToSell);
+
+        uint256 _sharesSwappedAway = _setsToSell.mul(2).sub(_noFromUser).sub(_yesFromUser);
+        require(_sharesSwappedAway <= _maxSharesSwappedAway, "AugurCP: Could not exit position without trading away more shares than desired.");
 
         // materialize the complete set sale for cash
         shareTransfer(msg.sender, address(this), _setsToSell, _noFromUser, _yesFromUser);
